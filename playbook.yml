@@ -1,0 +1,227 @@
+---
+- hosts: all
+  become: yes
+  vars_files:
+    - vars.yaml
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+
+  pre_tasks:
+    - name: Ensure apt cache is updated.
+      apt: update_cache=true cache_valid_time=600
+
+
+  tasks:
+    - name: Ensure nginx stable is installed
+      apt:
+        name: nginx
+        state: present
+
+    - name: Ensure nginx is running
+      service: 
+        name: nginx
+        state: started
+        enabled: yes
+      ignore_errors: true
+
+    - name:
+      file:
+        path: "/etc/nginx/ssl"
+        state: directory
+        owner: www-data
+        group: www-data
+
+    - name: get mozilla pem ffdhe2048
+      get_url:
+        url: "https://ssl-config.mozilla.org/ffdhe2048.txt"
+        dest: "/etc/nginx/ssl/ffdhe2048.pem"
+
+    - name: Installing Mysql and dependencies
+      package:
+       name: "{{item}}"
+       state: present
+       update_cache: yes
+      loop:
+        - default-mysql-server
+        - default-mysql-client 
+        - python-pymysql
+
+    - name: start and enable mysql service
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: creating database
+      mysql_db:
+        name: "wp_{{item.name}}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: creating mysql user app
+      mysql_user:
+        name: "user_{{item.name}}"
+        password: "{{item.dbpass}}"
+        priv: "wp_{{item.name}}.*:ALL"
+        host: '%'
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Install dependecies
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - lsb-release
+        - apt-transport-https 
+        - ca-certificates
+        - unzip 
+        - wget 
+        - git
+
+    - name: Install gpg key repo
+      apt_key:
+        url: "https://packages.sury.org/php/apt.gpg"
+        state: present
+
+    - name: Install PHP repository
+      apt_repository:
+        repo: "deb https://packages.sury.org/php/ buster main"
+        state: present
+        update_cache: yes
+
+    - name: Install PHP
+      apt:
+        name: "php7.4"
+        state: present
+
+    - name: Install PHP dependecies
+      apt:
+        name: "{{ item }}"
+      loop:
+        - php7.4-cgi 
+        - php7.4-common 
+        - php7.4-fpm 
+        - php-pear 
+        - php7.4-mbstring 
+        - php7.4-zip 
+        - php-net-socket 
+        - php7.4-gd 
+        - php7.4-xml
+        - php7.4-gettext 
+        - php7.4-mysql 
+        - php7.4-bcmath 
+
+    - name: Get and extract lastest wordpress
+      unarchive:
+        src: "https://wordpress.org/latest.zip"
+        dest: "{{ www_path }}"
+        remote_src: yes
+        owner: www-data
+        group: www-data
+
+    - name: Check if path for wordpress exists
+      ansible.builtin.stat:
+        path: "{{ www_path }}/wordpress"
+      register: check_file_name
+
+    - name: Copy wordpress files to blog path
+      command: cp -rf {{ www_path }}/wordpress {{ www_path }}/{{ item.name }}
+      when: check_file_name.stat.exists
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Copy wordpress files to blog path
+      command: chown -R www-data:www-data {{ www_path }}/{{ item.name }}/
+      when: check_file_name.stat.exists
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Remove defaults config nginx
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+
+    - name: Create wordpress configuration
+      template:
+        src: "src/wp-config.php.j2"
+        dest: "{{ www_path }}/{{ item.name }}/wp-config.php"
+        owner: www-data
+        group: www-data
+        mode: 0640
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Create nginx configuration HTTP
+      template:
+        src: "src/blog.j2"
+        dest: "/etc/nginx/sites-available/{{ item.name }}"
+      when: item.enable_https|bool == False
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Copy Certs HTTPS
+      copy:
+        src: src/{{ item.name }}.crt
+        dest: /etc/nginx/ssl/{{ item.name}}.crt
+        owner: www-data
+        group: www-data
+        mode: 0440
+      when: item.enable_https|bool == True
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Copy Keys HTTPS
+      copy:
+        src: src/{{ item.name }}.key
+        dest: /etc/nginx/ssl/{{ item.name}}.key
+        owner: www-data
+        group: www-data
+        mode: 0440
+      when: item.enable_https|bool == True
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Create nginx configuration HTTPS
+      template:
+        src: "src/blog_https.j2"
+        dest: "/etc/nginx/sites-available/{{ item.name }}"
+      when: item.enable_https|bool == True
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Enable configuration nginx
+      file:
+        src: "/etc/nginx/sites-available/{{ item.name }}"
+        dest: "/etc/nginx/sites-enabled/{{ item.name }}"
+        state: link
+      loop: "{{ blogs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Restart php-fpm
+      service: 
+        name: php7.4-fpm
+        state: restarted
+
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted

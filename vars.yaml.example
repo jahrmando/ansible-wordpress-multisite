@@ -1,0 +1,16 @@
+---
+ansible_python_interpreter: auto_legacy
+www_path: '/var/www'
+# Support for multisite
+blogs: 
+  - name: myblog
+    url: myblog.lan
+    dbpass: devtest
+    wpsecret: tEOYnJfkQrroCecwk8Tc1GAt7GzXLSI6 # A ramdom string
+    enable_https: false
+  - name: anothersite
+    url: anothersite.lan
+    dbpass: devtest
+    wpsecret: vPi[+BvdHXr76KMQP*5Q3%omGubx%q-itT # A ramdom string
+    enable_https: false
+
