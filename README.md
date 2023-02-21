@@ -46,7 +46,6 @@ blogs:
 We tested this playbook with [Vagrant](https://www.vagrantup.com)
 
 ```
-$ vagrant init
 $ vagrant up
 ```
 
