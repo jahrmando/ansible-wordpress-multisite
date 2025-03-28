@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "bento/debian-10"
+  config.vm.box = "bento/debian-12"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -67,14 +67,12 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", run: "once", inline: <<-SHELL
     apt-get update
     apt-get install -y software-properties-common gnupg
-    add-apt-repository "deb http://ppa.launchpad.net/ansible/ansible/ubuntu trusty main"
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 93C4A3FD7BB9C367
-    apt-get update
     apt-get install -y ansible
   SHELL
   #
-  config.vm.provision "ansible" do |ansible|
+  config.vm.provision "ansible_local" do |ansible|
     ansible.playbook = "playbook.yml"
+    ansible.compatibility_mode = "2.0"
   end
 
 end

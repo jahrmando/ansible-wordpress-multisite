@@ -48,7 +48,7 @@
       loop:
         - default-mysql-server
         - default-mysql-client 
-        - python-pymysql
+        - python3-pymysql
 
     - name: start and enable mysql service
       service:
@@ -88,6 +88,7 @@
         - unzip 
         - wget 
         - git
+        - gnupg
 
     - name: Install gpg key repo
       apt_key:
@@ -96,9 +97,9 @@
 
     - name: Install PHP repository
       apt_repository:
-        repo: "deb https://packages.sury.org/php/ buster main"
+        repo: "deb https://packages.sury.org/php/ {{ ansible_distribution_release }} main"
         state: present
-        update_cache: yes
+        filename: sury-php
 
     - name: Install PHP
       apt:
